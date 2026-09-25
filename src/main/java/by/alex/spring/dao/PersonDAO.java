@@ -1,12 +1,15 @@
 package by.alex.spring.dao;
 
 import by.alex.spring.models.Person;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.ArgumentPreparedStatementSetter;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -50,14 +53,24 @@ public class PersonDAO {
         }};
     }*/
 
-    private final JdbcTemplate jdbcTemplate;
+    /*private final JdbcTemplate jdbcTemplate;
 
     @Autowired
     public PersonDAO(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }*/
+
+    private final SessionFactory sessionFactory;
+
+    @Autowired
+    public PersonDAO(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
     }
 
+    @Transactional(readOnly = true)
     public List<Person> allPeople() {
+        Session session = sessionFactory.getCurrentSession();
+        return session.createQuery("FROM Person", Person.class).getResultList();
         //return people;
 
         /*List<Person> people = new ArrayList<>();
@@ -82,17 +95,25 @@ public class PersonDAO {
 
         return people;*/
 
-        return jdbcTemplate.query("SELECT * FROM person",
-                new BeanPropertyRowMapper<>(Person.class)/* (or) new PersonMapper()*/);
+        /*return jdbcTemplate.query("SELECT * FROM person",
+                new BeanPropertyRowMapper<>(Person.class)*//* (or) new PersonMapper()*//*);*/
     }
 
+    @Transactional(readOnly = true)
     public Optional<Person> personByEmail(String email) {
-        return jdbcTemplate.query("SELECT * FROM person WHERE email=?", new Object[]{email},
+        Session session = sessionFactory.getCurrentSession();
+        return session.createQuery("FROM Person WHERE email = :email", Person.class)
+                .setParameter("email", email)
+                .uniqueResultOptional();
+        /*return jdbcTemplate.query("SELECT * FROM person WHERE email=?", new Object[]{email},
                         new BeanPropertyRowMapper<>(Person.class))
-                .stream().findAny();
+                .stream().findAny();*/
     }
 
+    @Transactional(readOnly = true)
     public Person personById(int id) {
+        Session session = sessionFactory.getCurrentSession();
+        return session.find(Person.class, id);
         /*return people.stream()
                 .filter(person -> person.getId() == id)
                 .findAny()
@@ -117,12 +138,15 @@ public class PersonDAO {
         }
         return person;*/
 
-        return jdbcTemplate.query("SELECT * FROM person WHERE id=?", new Object[]{id},
-                        new BeanPropertyRowMapper<>(Person.class) /* (or) new PersonMapper()*/)
-                .stream().findAny().orElse(null);
+        /*return jdbcTemplate.query("SELECT * FROM person WHERE id=?", new Object[]{id},
+                        new BeanPropertyRowMapper<>(Person.class) *//* (or) new PersonMapper()*//*)
+                .stream().findAny().orElse(null);*/
     }
 
+    @Transactional
     public void save(Person person) {
+        Session session = sessionFactory.getCurrentSession();
+        session.persist(person);
         /*person.setId(++PEOPLE_COUNT);
         people.add(person);*/
 
@@ -148,11 +172,20 @@ public class PersonDAO {
             e.printStackTrace();
         }*/
 
-        jdbcTemplate.update("INSERT INTO person(name, age, email, address) VALUES (?, ?, ?, ?)",
-                person.getName(), person.getAge(), person.getEmail(), person.getAddress());
+        /*jdbcTemplate.update("INSERT INTO person(name, age, email, address) VALUES (?, ?, ?, ?)",
+                person.getName(), person.getAge(), person.getEmail(), person.getAddress());*/
     }
 
+    @Transactional
     public void update(int id, Person updatedPerson) {
+        Session session = sessionFactory.getCurrentSession();
+        Person personToUpdate = session.find(Person.class, id);
+        if (personToUpdate != null) {
+            personToUpdate.setName(updatedPerson.getName());
+            personToUpdate.setAge(updatedPerson.getAge());
+            personToUpdate.setEmail(updatedPerson.getEmail());
+            personToUpdate.setAddress(updatedPerson.getAddress());
+        }
         /*people.stream()
                 .filter(oldPerson -> oldPerson.getId() == id)
                 .findAny()
@@ -176,11 +209,17 @@ public class PersonDAO {
             e.printStackTrace();
         }*/
 
-        jdbcTemplate.update("UPDATE person SET name=?, age=?, email=?, address=? WHERE id=?",
-                updatedPerson.getName(), updatedPerson.getAge(), updatedPerson.getEmail(), updatedPerson.getAddress(), id);
+        /*jdbcTemplate.update("UPDATE person SET name=?, age=?, email=?, address=? WHERE id=?",
+                updatedPerson.getName(), updatedPerson.getAge(), updatedPerson.getEmail(), updatedPerson.getAddress(), id);*/
     }
 
+    @Transactional
     public void delete(int id) {
+        Session session = sessionFactory.getCurrentSession();
+        Person person = session.find(Person.class, id);
+        if (person != null) {
+            session.remove(person);
+        }
         //people.removeIf(person -> person.getId() == id);
 
         /*try {
@@ -193,16 +232,21 @@ public class PersonDAO {
             e.printStackTrace();
         }*/
 
-        jdbcTemplate.update("DELETE FROM person WHERE id=?", id);
+        //jdbcTemplate.update("DELETE FROM person WHERE id=?", id);
     }
 
+    @Transactional
     public void makeAdmin(int id) {
-        jdbcTemplate.update("UPDATE person SET is_admin=? WHERE id=?", true, id);
+        Session session = sessionFactory.getCurrentSession();
+        session.createMutationQuery("UPDATE Person SET isAdmin = true WHERE id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+        /*jdbcTemplate.update("UPDATE person SET is_admin=? WHERE id=?", true, id);*/
     }
 
-    ///////////////////////////
-    /////Test batch update/////
-    ///////////////////////////
+    /// ////////////////////////
+    /// //Test batch update/////
+    /// ////////////////////////
 
     public void multipleUpdate() {
         List<Person> people = create1000People();
@@ -210,8 +254,8 @@ public class PersonDAO {
         long before = System.currentTimeMillis();
 
         for (Person person : people) {
-            jdbcTemplate.update("INSERT INTO person(name, age, email, address) VALUES (?, ?, ?, ?)",
-                    person.getId(), person.getName(), person.getAge(), person.getEmail(), person.getAddress());
+            /*jdbcTemplate.update("INSERT INTO person(name, age, email, address) VALUES (?, ?, ?, ?)",
+                    person.getId(), person.getName(), person.getAge(), person.getEmail(), person.getAddress());*/
         }
 
 
@@ -224,7 +268,7 @@ public class PersonDAO {
 
         long before = System.currentTimeMillis();
 
-        jdbcTemplate.batchUpdate("INSERT INTO person(name, age, email, address) VALUES (?, ?, ?, ?)",
+        /*jdbcTemplate.batchUpdate("INSERT INTO person(name, age, email, address) VALUES (?, ?, ?, ?)",
                 new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -239,7 +283,7 @@ public class PersonDAO {
                     public int getBatchSize() {
                         return people.size();
                     }
-                });
+                });*/
 
         long after = System.currentTimeMillis();
         System.out.println("Time: " + (after - before));
@@ -248,9 +292,9 @@ public class PersonDAO {
     private List<Person> create1000People() {
         List<Person> people = new ArrayList<>();
 
-        for (int i = 0; i < 1000; i++) {
+        /*for (int i = 0; i < 1000; i++) {
             people.add(new Person(i, "Name" + i, 30, "test" + i + "@mail.ru", "some" + i + "address"));
-        }
+        }*/
 
         return people;
     }
